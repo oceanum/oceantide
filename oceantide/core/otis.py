@@ -408,7 +408,7 @@ def read_otis_bin_grid(gfile):
         nx, ny = np.fromfile(f, dtype=INT, count=2)
         y0, y1, x0, x1 = np.fromfile(f, dtype=FLOAT, count=4)
         dt = np.fromfile(f, dtype=FLOAT, count=1)  # lat-lon if > 0
-        nob = np.fromfile(f, dtype=INT, count=1)
+        nob = np.fromfile(f, dtype=INT, count=1)[0]
         if nob == 0:
             f.seek(20, 1)
             iob = []
