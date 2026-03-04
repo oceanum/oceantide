@@ -38,6 +38,7 @@ dependencies = [
     "scipy",
     "xarray",
     "zarr",
+    "pandas<3'
 ]
 dynamic = ["version"]
 
