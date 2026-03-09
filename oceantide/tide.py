@@ -134,14 +134,16 @@ class Tide(metaclass=Plugin):
         if isinstance(times, datetime.datetime):
             times = [times]
         if isinstance(times, (list, tuple, np.ndarray, pd.DatetimeIndex)):
-            seconds_array = pd.array(times).view(int) / 1e9 - 694224000
+            _epoch = np.datetime64("1970-01-01")
+            seconds_array = (pd.DatetimeIndex(times).values - _epoch) / np.timedelta64(1, "s") - 694224000
             tsec = xr.DataArray(
                 data=seconds_array,
                 coords={"time": times},
                 dims=("time",),
             ).chunk({"time": time_chunk})
         elif isinstance(times, xr.DataArray):
-            tsec = times.astype(int) / 1e9 - 694224000
+            _epoch = np.datetime64("1970-01-01")
+            tsec = (times - _epoch) / np.timedelta64(1, "s") - 694224000
         else:
             raise TypeError(
                 "times argument must be a list of datetimes, pandas.DatetimeIndex, "
