@@ -108,3 +108,63 @@ def test_existing_constituents_keep_their_published_arguments():
     }
     for con, value in original.items():
         assert V0U[con] == pytest.approx(value)
+
+
+# Complex nodal modulation terms from the OTIS ``nodal.f`` coefficients, as
+# (real, imag) polynomials in (1, cosN, cos2N) and (sinN, sin2N). f is the
+# modulus of this term and u its argument; spelling them out here checks the
+# library's numbers against the published ones rather than against itself.
+NODAL_TERMS = {
+    "M2": ((1.0, -0.03731, 0.00052), (-0.03731, 0.00052)),
+    "N2": ((1.0, -0.03731, 0.00052), (-0.03731, 0.00052)),
+    "2N2": ((1.0, -0.03731, 0.00052), (-0.03731, 0.00052)),
+    "MU2": ((1.0, -0.03731, 0.00052), (-0.03731, 0.00052)),
+    "NU2": ((1.0, -0.03731, 0.00052), (-0.03731, 0.00052)),
+    "K1": ((1.0, 0.1158, -0.0029), (-0.1554, 0.0029)),
+    "K2": ((1.0, 0.2852, 0.0324), (-0.3108, -0.0324)),
+}
+
+# A full nodal cycle, sampled off the extremes where sinN vanishes and the
+# imaginary term (the one K1 got wrong) drops out of f.
+CYCLE = 48622.0 + np.linspace(0.0, 6798.0, 97)
+
+
+def _expected_polar(con, mjd):
+    """f and u in degrees from the published coefficients, independently."""
+    from oceantide.core.utils import astrol
+
+    (a0, a1, a2), (b1, b2) = NODAL_TERMS[con]
+    _, _, _, N = astrol(mjd)
+    n = np.deg2rad(N)
+    real = a0 + a1 * np.cos(n) + a2 * np.cos(2 * n)
+    imag = b1 * np.sin(n) + b2 * np.sin(2 * n)
+    return np.abs(real + 1j * imag), np.rad2deg(np.angle(real + 1j * imag))
+
+
+@pytest.mark.parametrize("con", sorted(NODAL_TERMS))
+def test_nodal_factor_and_angle_match_the_published_term(con):
+    """f and u must be the modulus and argument of the same complex term."""
+    for mjd in CYCLE:
+        pu, pf, _ = nodal(mjd, [con])
+        f_exp, u_exp = _expected_polar(con, mjd)
+        assert pf[0] == pytest.approx(f_exp, rel=1e-12), con
+        assert np.rad2deg(pu[0]) == pytest.approx(u_exp, rel=1e-12, abs=1e-12), con
+
+
+def test_k1_nodal_factor_is_not_the_dropped_digit_form():
+    """Regression: f used 0.01554 where u (and every reference) uses 0.1554.
+
+    The two forms agree wherever sinN vanishes, so this compares them across
+    the cycle rather than at a single time.
+    """
+    from oceantide.core.utils import astrol
+
+    _, _, _, N = astrol(CYCLE)
+    n = np.deg2rad(N)
+    real = 1.0 + 0.1158 * np.cos(n) - 0.0029 * np.cos(2 * n)
+    typo = np.hypot(real, 0.01554 * np.sin(n) - 0.0029 * np.sin(2 * n))
+    got = np.array([nodal(mjd, ["K1"])[1][0] for mjd in CYCLE])
+
+    assert np.abs(got - typo).max() > 0.01, "K1 still carries the dropped digit"
+    # The error the dropped digit used to introduce, for the record.
+    assert (100 * np.abs(got - typo) / got).max() == pytest.approx(1.19, abs=0.05)

@@ -40,62 +40,50 @@ def nodal(time: np.ndarray, con: np.ndarray):
     cos2n = np.cos(2 * omega * rad)
     sin3n = np.sin(3 * omega * rad)
 
+    def polar(real, imag):
+        """Nodal factor and angle as the modulus and argument of one term.
+
+        The nodal correction of these constituents is a single complex
+        modulation term: f is its modulus and u its argument. Writing the two
+        out separately means spelling the coefficients twice, which is how they
+        drift apart -- K1's f carried 0.01554 where its own u used 0.1554, a
+        dropped digit worth 1.2% of K1 amplitude at the nodal extremes.
+
+        """
+        z = real + 1j * imag
+        return {"f": np.abs(z), "u": np.angle(z) / rad}
+
+    # Semidiurnal lunar group, Schureman via the OTIS `nodal.f` coefficients.
+    m2 = polar(
+        1.0 - 0.03731 * cosn + 0.00052 * cos2n,
+        -0.03731 * sinn + 0.00052 * sin2n,
+    )
+
     ndict = {
-        "M2": {
-            "f": np.sqrt(
-                (1.0 - 0.03731 * cosn + 0.00052 * cos2n) ** 2
-                + (0.03731 * sinn - 0.00052 * sin2n) ** 2
-            ),
-            "u": np.arctan(
-                (-0.03731 * sinn + 0.00052 * sin2n)
-                / (1.0 - 0.03731 * cosn + 0.00052 * cos2n)
-            )
-            / rad,
-        },
+        "M2": m2,
         "S2": {"f": 1.0, "u": 0.0},
-        "K1": {
-            "f": np.sqrt(
-                (1.0 + 0.1158 * cosn - 0.0029 * cos2n) ** 2
-                + (0.01554 * sinn - 0.0029 * sin2n) ** 2
-            ),
-            "u": np.arctan(
-                (-0.1554 * sinn + 0.0029 * sin2n)
-                / (1.0 + 0.1158 * cosn - 0.0029 * cos2n)
-            )
-            / rad,
-        },
+        "K1": polar(
+            1.0 + 0.1158 * cosn - 0.0029 * cos2n,
+            -0.1554 * sinn + 0.0029 * sin2n,
+        ),
+        # O1 and Q1 keep OTIS's hand-written angle series rather than the
+        # argument of their own f term; the two are not interchangeable, and
+        # Q1 genuinely uses 0.188 in f against 0.189 in u.
         "O1": {
-            "f": np.sqrt(
-                (1.0 + 0.189 * cosn - 0.0058 * cos2n) ** 2
-                + (0.189 * sinn - 0.0058 * sin2n) ** 2
+            "f": np.hypot(
+                1.0 + 0.189 * cosn - 0.0058 * cos2n,
+                0.189 * sinn - 0.0058 * sin2n,
             ),
             "u": 10.8 * sinn - 1.3 * sin2n + 0.2 * sin3n,
         },
-        "N2": {
-            "f": np.sqrt(
-                (1.0 - 0.03731 * cosn + 0.00052 * cos2n) ** 2
-                + (0.03731 * sinn - 0.00052 * sin2n) ** 2
-            ),
-            "u": np.arctan(
-                (-0.03731 * sinn + 0.00052 * sin2n)
-                / (1.0 - 0.03731 * cosn + 0.00052 * cos2n)
-            )
-            / rad,
-        },
+        "N2": m2,
         "P1": {"f": 1.0, "u": 0.0},
-        "K2": {
-            "f": np.sqrt(
-                (1.0 + 0.2852 * cosn + 0.0324 * cos2n) ** 2
-                + (0.3108 * sinn + 0.0324 * sin2n) ** 2
-            ),
-            "u": np.arctan(
-                -(0.3108 * sinn + 0.0324 * sin2n)
-                / (1.0 + 0.2852 * cosn + 0.0324 * cos2n)
-            )
-            / rad,
-        },
+        "K2": polar(
+            1.0 + 0.2852 * cosn + 0.0324 * cos2n,
+            -0.3108 * sinn - 0.0324 * sin2n,
+        ),
         "Q1": {
-            "f": np.sqrt((1.0 + 0.188 * cosn) ** 2 + (0.188 * sinn) ** 2),
+            "f": np.hypot(1.0 + 0.188 * cosn, 0.188 * sinn),
             "u": np.arctan(0.189 * sinn / (1.0 + 0.189 * cosn)) / rad,
         },
         # Long period. Mm and Mf carry the standard Schureman factors; Mf's
