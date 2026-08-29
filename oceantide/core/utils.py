@@ -1,10 +1,11 @@
 """Core tools for tidal analysis and prediction."""
+import warnings
 from pathlib import Path
 import yaml
 import numpy as np
 import xarray as xr
 
-from oceantide.constituents import V0U
+from oceantide.constituents import SHALLOW, V0U
 
 
 HERE = Path(__file__).parent
@@ -97,7 +98,34 @@ def nodal(time: np.ndarray, con: np.ndarray):
             "f": np.sqrt((1.0 + 0.188 * cosn) ** 2 + (0.188 * sinn) ** 2),
             "u": np.arctan(0.189 * sinn / (1.0 + 0.189 * cosn)) / rad,
         },
+        # Long period. Mm and Mf carry the standard Schureman factors; Mf's
+        # nodal modulation is large -- f swings by about 40% over the 18.6 year
+        # cycle -- so leaving it at unity is a material error.
+        "MM": {"f": 1.0 - 0.1300 * cosn + 0.0013 * cos2n, "u": 0.0},
+        "MF": {
+            "f": 1.043 + 0.414 * cosn,
+            "u": -23.7 * sinn + 2.7 * sin2n - 0.4 * sin3n,
+        },
+        # Solar constituents have no lunar nodal modulation. Listed explicitly
+        # rather than left to the default so that unity is visibly deliberate.
+        "SA": {"f": 1.0, "u": 0.0},
+        "SSA": {"f": 1.0, "u": 0.0},
+        "S1": {"f": 1.0, "u": 0.0},
+        "T2": {"f": 1.0, "u": 0.0},
     }
+
+    # 2N2, mu2 and nu2 sit in M2's nodal group and share its factors.
+    for name in ("2N2", "MU2", "NU2"):
+        ndict[name] = ndict["M2"]
+
+    # Compound constituents are products of their parents.
+    for name, parents in SHALLOW.items():
+        f = 1.0
+        u = 0.0
+        for parent, power in parents.items():
+            f = f * ndict[parent]["f"] ** power
+            u = u + ndict[parent]["u"] * power
+        ndict[name] = {"f": f, "u": u}
 
     ncon = len(con)
     pu = np.zeros(ncon)
@@ -108,8 +136,19 @@ def nodal(time: np.ndarray, con: np.ndarray):
         if vv in ndict:
             pu[ii] = ndict[vv]["u"] * rad
             pf[ii] = ndict[vv]["f"]
-        if vv in V0U.keys():
+        if vv in V0U:
             v0u[ii] = V0U[vv]
+        else:
+            # Falling through with v0u = 0 references the constituent to an
+            # arbitrary phase, which produces a plausible looking but wrong
+            # tide. Say so, and contribute nothing, rather than let it pass.
+            warnings.warn(
+                f"No equilibrium argument for constituent {vv!r}; it would be "
+                f"predicted with an arbitrary phase reference and is dropped. "
+                f"Add it to oceantide.constituents.V0U to support it.",
+                stacklevel=2,
+            )
+            pf[ii] = 0.0
 
     return pu, pf, v0u
 
