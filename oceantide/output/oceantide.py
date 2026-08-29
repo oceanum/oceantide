@@ -2,9 +2,15 @@
 from pathlib import Path
 import numpy as np
 import xarray as xr
-from zarr.codecs import FixedScaleOffset
+import zarr
 
 from oceantide.core.utils import set_attributes, compute_scale_and_offset
+
+
+ZARR_VERSION = int(zarr.__version__.split(".")[0])
+
+# Encoding entries defining codecs, they are specific to the zarr format version
+CODEC_ENCODINGS = ("compressor", "compressors", "filters", "serializer", "codecs")
 
 
 AMPMIN = -20.0
@@ -64,6 +70,57 @@ def to_oceantide(self, filename: str, file_format: str = None, **kwargs):
     writer(dset, filename, **kwargs)
 
 
+def _zarr_format(**kwargs) -> int:
+    """Zarr format version the dataset is going to be written in.
+
+    Parameters
+    ----------
+    kwargs
+        Keyword arguments to pass to to_zarr method.
+
+    Returns
+    -------
+    zarr_format (int)
+        Zarr format version, either 2 or 3.
+
+    """
+    if ZARR_VERSION < 3:
+        return 2
+    zarr_format = kwargs.get("zarr_format") or zarr.config.get("default_zarr_format", 3)
+    return int(zarr_format)
+
+
+def _fixed_scale_offset(offset: float, scale: float, zarr_format: int, **kwargs):
+    """FixedScaleOffset codec for the zarr format version being written.
+
+    Parameters
+    ----------
+    offset (float)
+        Value to subtract from data before scaling.
+    scale (float)
+        Value to multiply data by after subtracting the offset.
+    zarr_format (int)
+        Zarr format version the codec is going to be used with, either 2 or 3.
+    kwargs
+        Extra keyword arguments to pass to the codec, e.g. `dtype` and `astype`.
+
+    Returns
+    -------
+    codec
+        FixedScaleOffset codec instance, numcodecs codecs are used for zarr format 2
+        and zarr codecs wrapping them are used for zarr format 3.
+
+    """
+    if zarr_format == 2:
+        from numcodecs import FixedScaleOffset
+    else:
+        try:
+            from zarr.codecs.numcodecs import FixedScaleOffset
+        except ImportError:
+            from numcodecs.zarr3 import FixedScaleOffset
+    return FixedScaleOffset(offset=offset, scale=scale, **kwargs)
+
+
 def _write_zarr(dset: xr.Dataset, filename: str, **kwargs):
     """Write oceantide zarr file format.
 
@@ -77,9 +134,19 @@ def _write_zarr(dset: xr.Dataset, filename: str, **kwargs):
         Keyword argument to pass to to_zarr method.
 
     """
+    zarr_format = _zarr_format(**kwargs)
+
     kw = {"dtype": "float32", "astype": "int16"}
-    fd = FixedScaleOffset(offset=ADD_OFFSET_D, scale=1 / SCALE_FACTOR_D, **kw)
-    fa = FixedScaleOffset(offset=ADD_OFFSET_A, scale=1 / SCALE_FACTOR_A, **kw)
+    fd = _fixed_scale_offset(ADD_OFFSET_D, 1 / SCALE_FACTOR_D, zarr_format, **kw)
+    fa = _fixed_scale_offset(ADD_OFFSET_A, 1 / SCALE_FACTOR_A, zarr_format, **kw)
+
+    # Work on a copy so the encoding of the input dataset is left untouched
+    dset = dset.copy()
+
+    # Codecs defined when reading an existing file may not suit the format to write
+    for coord in dset.coords.values():
+        for key in CODEC_ENCODINGS:
+            coord.encoding.pop(key, None)
 
     dset.dep.encoding = {"filters": [fd], "_FillValue": DEPMAX, "dtype": kw["dtype"]}
     for varname, dvar in dset.data_vars.items():

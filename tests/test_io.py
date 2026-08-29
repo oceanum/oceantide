@@ -2,12 +2,26 @@
 from pathlib import Path
 import pytest
 import datetime
+import numpy as np
 import xarray as xr
 
 from oceantide import read_otis_netcdf, read_otis_binary, read_oceantide
+from oceantide.output.oceantide import ZARR_VERSION
 
 
 FILES_DIR = Path(__file__).parent / "test_files"
+
+# Tolerances for the int16 packing applied when writing the oceantide format
+DEP_ATOL = 0.2
+AMP_ATOL = 1e-3
+
+
+def _assert_roundtrip(dset, dset2):
+    assert set(dset2.data_vars) == set(dset.data_vars)
+    for varname, dvar in dset.data_vars.items():
+        atol = DEP_ATOL if varname == "dep" else AMP_ATOL
+        other = dset2[varname].values
+        assert np.allclose(dvar.values, other, atol=atol, equal_nan=True)
 
 
 def test_read_otis_binary_with_filename():
@@ -52,12 +66,27 @@ def test_otis_netcdf_correct_args():
 
 def test_read_write_oceantide_netcdf(tmpdir):
     dset = read_oceantide(FILES_DIR / "oceantide.nc")
-    dset.tide.to_oceantide(tmpdir / "newoceantide.nc")
+    filename = str(tmpdir / "newoceantide.nc")
+    dset.tide.to_oceantide(filename)
+    _assert_roundtrip(dset, read_oceantide(filename))
 
 
 def test_read_write_oceantide_zarr(tmpdir):
     dset = read_oceantide(FILES_DIR / "oceantide.zarr")
-    dset.tide.to_oceantide(str(tmpdir / "newoceantide.zarr"))
+    filename = str(tmpdir / "newoceantide.zarr")
+    dset.tide.to_oceantide(filename)
+    _assert_roundtrip(dset, read_oceantide(filename))
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_read_write_oceantide_zarr_format(tmpdir, zarr_format):
+    """Both zarr formats are supported when writing with zarr>=3."""
+    if ZARR_VERSION < 3:
+        pytest.skip("The zarr_format option requires zarr>=3")
+    dset = read_oceantide(FILES_DIR / "oceantide.zarr")
+    filename = str(tmpdir / f"newoceantide{zarr_format}.zarr")
+    dset.tide.to_oceantide(filename, zarr_format=zarr_format)
+    _assert_roundtrip(dset, read_oceantide(filename))
 
 
 def test_supported_oceantide_formats(tmpdir):
