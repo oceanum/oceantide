@@ -60,3 +60,35 @@ def test_otis_binary_writer_plugin(tmpdir):
     dset = read_otis_netcdf(FILES_DIR / "otis_netcdf/Model_test")
     filenames = dset.tide.to_otis_binary(tmpdir, hfile=True, ufile=True, gfile=True)
     print(filenames)
+
+
+import numpy as np
+import pytest
+
+from oceantide import read_otis_binary
+
+
+@pytest.mark.parametrize(
+    "reader,path",
+    [
+        ("netcdf", "otis_netcdf/Model_test"),
+        ("binary", "otis_binary/Model_rag"),
+    ],
+)
+def test_converted_currents_are_finite(reader, path):
+    """Regression: transport / depth gave inf at nodes bordering land.
+
+    The land mask keys off the Z-node depth, so infinities produced at a U or V
+    node whose own depth was zero survived into the result and, before the
+    packing range check existed, into the written file.
+    """
+    read = read_otis_netcdf if reader == "netcdf" else read_otis_binary
+    dset = read(FILES_DIR / path).compute()
+
+    for varname in ("h", "u", "v"):
+        assert not np.isinf(dset[varname].values).any(), varname
+
+    # Every variable should be masked at the same points, namely the dry ones.
+    masks = [np.isnan(dset[v].values) for v in ("h", "u", "v")]
+    assert (masks[0] == masks[1]).all()
+    assert (masks[0] == masks[2]).all()
