@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install . 'oceantide[extra,test]'
+          pip install '.[extra,test]'
 
       - name: Run tests
         run: |

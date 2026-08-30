@@ -12,7 +12,11 @@ import dask.array as da
 import pandas as pd
 import xarray as xr
 
-from oceantide.core.utils import nodal_corrections, set_attributes
+from oceantide.core.utils import (
+    drop_codec_encoding,
+    nodal_corrections,
+    set_attributes,
+)
 from oceantide.constituents import OMEGA
 
 
@@ -52,6 +56,10 @@ class Tide(metaclass=Plugin):
         """Set attributes in output timeseries dataset."""
         set_attributes(dset, "timeseries")
         dset.attrs = {"description": "Tide elevation and currents time series"}
+        # A prediction is new data. Codec encoding carried over from the file
+        # the constituents were read from would otherwise follow it out, and
+        # writing it back to zarr fails outright when the versions differ.
+        drop_codec_encoding(dset)
         return dset
 
     def _validate(self):

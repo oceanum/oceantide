@@ -33,9 +33,10 @@ def read_oceantide(
 
     """
     dset = xr.open_dataset(filename, engine=engine, chunks=chunks, **kwargs)
-    dsout = dset[["dep"]]
+    dsout = dset[["dep"]] if "dep" in dset else xr.Dataset()
     for v in ["h", "u", "v"]:
-        dsout[v] = dset[f"{v}_real"] + 1j * dset[f"{v}_imag"]
+        if f"{v}_real" in dset:
+            dsout[v] = dset[f"{v}_real"] + 1j * dset[f"{v}_imag"]
     set_attributes(dsout, "dataset")
     dsout["con"] = dsout.con.astype("U4")
     return dsout

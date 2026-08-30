@@ -69,6 +69,21 @@ Bug Fixes
   parents. M4 and MN4 were tabulated a part in 1e10 away from twice M2 and from
   M2 + N2, which is 6 and 12 degrees of phase 34 years from the 1992 epoch, and
   2MS6 carried M4's equilibrium argument verbatim.
+* ``to_oceantide`` raises instead of silently wrapping when a value falls
+  outside the range the int16 packing can represent. A 25 m amplitude used to
+  round-trip as -15 m and a 15000 m depth as 2999 m. Pass ``check_range=False``
+  to skip the check and the pass over the data it costs.
+* The OTIS readers no longer produce infinite currents at nodes bordering land,
+  where transport was divided by a zero node depth. h, u and v now share one
+  mask.
+* ``to_oceantide`` and ``read_oceantide`` handle datasets carrying only some of
+  h, u and v, which the accessor has supported since 0.7.0. Writing one without
+  ``dep`` raised ``KeyError``.
+* Predictions no longer inherit the codec encoding of the file the constituents
+  were read from, which made writing one back to zarr fail across format
+  versions.
+* The release workflow installed the published package over the working tree,
+  so the tests gating a release ran against the previous release.
 
 Internal Changes
 ----------------
@@ -79,6 +94,15 @@ Internal Changes
 * ``PERIODS`` is derived from ``OMEGA`` rather than tabulated alongside it.
 * Prediction is checked end to end against a committed pyTMD reference, and the
   constituent tables against the Doodson expansion.
+* ``oceantide`` on the command line is a working ``convert`` and ``info``
+  command rather than the cookiecutter placeholder.
+* Declare the ``pyyaml`` dependency, which was only ever present transitively.
+* ``requires-python`` is now >=3.11, matching what the dependencies resolve for.
+* Tests run on every push and pull request across Python 3.11 to 3.13, plus a
+  job pinning ``zarr<3`` so both branches of the zarr writer are exercised.
+* Remove the vendored ``oceantide.ellipse`` module, which nothing imported and
+  which had not been runnable since matplotlib 3.0.
+* Write a real README and usage documentation; the docs build again.
 
 
 0.7.0 (2024-01-31)

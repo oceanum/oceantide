@@ -4,13 +4,14 @@ import numpy as np
 import xarray as xr
 import zarr
 
-from oceantide.core.utils import set_attributes, compute_scale_and_offset
+from oceantide.core.utils import (
+    compute_scale_and_offset,
+    drop_codec_encoding,
+    set_attributes,
+)
 
 
 ZARR_VERSION = int(zarr.__version__.split(".")[0])
-
-# Encoding entries defining codecs, they are specific to the zarr format version
-CODEC_ENCODINGS = ("compressor", "compressors", "filters", "serializer", "codecs")
 
 
 AMPMIN = -20.0
@@ -20,13 +21,75 @@ DEPMAX = 12000.0
 SCALE_FACTOR_D, ADD_OFFSET_D = compute_scale_and_offset(DEPMIN, DEPMAX)
 SCALE_FACTOR_A, ADD_OFFSET_A = compute_scale_and_offset(AMPMIN, AMPMAX)
 
+# The top quantum of each range encodes to the same integer as the fill value
+# and would decode back as nan, so it is not writable.
+LIMITS = {
+    "dep": (DEPMIN, DEPMAX - SCALE_FACTOR_D),
+    None: (AMPMIN, AMPMAX - SCALE_FACTOR_A),
+}
+
 FILE_FORMATS = {
     ".nc": "netcdf",
     ".zarr": "zarr",
 }
 
 
-def to_oceantide(self, filename: str, file_format: str = None, **kwargs):
+def _check_packing_range(dset: xr.Dataset):
+    """Refuse to write values the int16 packing cannot represent.
+
+    The format packs into int16 against a fixed scale and offset, and numpy
+    wraps rather than saturating on overflow, so a value past either end came
+    back as a plausible number of the wrong sign or magnitude: a 25 m amplitude
+    read back as -15 m, a 15000 m depth as 2999 m, with nothing logged.
+
+    Parameters
+    ----------
+    dset (xr.Dataset)
+        Dataset about to be written, with real and imag variables split out.
+
+    Raises
+    ------
+    ValueError
+        If any variable falls outside the range its packing can represent.
+
+    """
+    stats = xr.Dataset()
+    for varname, dvar in dset.data_vars.items():
+        stats[f"{varname}|min"] = dvar.min()
+        stats[f"{varname}|max"] = dvar.max()
+    stats = stats.compute()
+
+    problems = []
+    for varname in dset.data_vars:
+        vmin = float(stats[f"{varname}|min"])
+        vmax = float(stats[f"{varname}|max"])
+        if np.isnan(vmin):
+            continue  # all missing, nothing to pack
+        low, high = LIMITS.get(varname, LIMITS[None])
+        if vmin < low or vmax > high:
+            problems.append(
+                f"  {varname}: spans [{vmin:.6g}, {vmax:.6g}], "
+                f"writable range is [{low:.6g}, {high:.6g}]"
+            )
+
+    if problems:
+        raise ValueError(
+            "Values outside the range the oceantide format can pack:\n"
+            + "\n".join(problems)
+            + "\nThe format stores int16 against a fixed scale, and values past "
+            "either end wrap silently rather than clipping. Check the units of "
+            "the dataset, or write it with xarray directly if it genuinely "
+            "needs this range."
+        )
+
+
+def to_oceantide(
+    self,
+    filename: str,
+    file_format: str = None,
+    check_range: bool = True,
+    **kwargs,
+):
     """Write dataset as Oceantide format.
 
     The oceantide format has complex constituents variables split into real and imag
@@ -41,16 +104,29 @@ def to_oceantide(self, filename: str, file_format: str = None, **kwargs):
     file_format (str)
         Format for output file, `zarr` and `netcdf` are supported. If not specified it
         is guessed from the filename extension.
+    check_range (bool)
+        Raise if any value falls outside the range the int16 packing can represent,
+        rather than letting it wrap silently. Costs one pass over the data; set it
+        False only where the range is already known to be safe.
     kwargs
         Keyword argument to pass to to_netcdf or to_zarr method.
 
+    Raises
+    ------
+    ValueError
+        If `check_range` and any value is outside the writable range, or if the
+        file format cannot be determined or is unsupported.
+
     """
-    dset = self._obj[["dep"]]
+    dset = self._obj[["dep"]] if "dep" in self._obj else xr.Dataset()
     for v in ["h", "u", "v"]:
         if v in self._obj:
             dset[f"{v}_real"] = self._obj[v].real
             dset[f"{v}_imag"] = self._obj[v].imag
     set_attributes(dset, "oceantide")
+
+    if check_range:
+        _check_packing_range(dset)
 
     ext = Path(filename).suffix
     if not file_format:
@@ -143,16 +219,19 @@ def _write_zarr(dset: xr.Dataset, filename: str, **kwargs):
     # Work on a copy so the encoding of the input dataset is left untouched
     dset = dset.copy()
 
-    # Codecs defined when reading an existing file may not suit the format to write
-    for coord in dset.coords.values():
-        for key in CODEC_ENCODINGS:
-            coord.encoding.pop(key, None)
+    # Codecs defined when reading an existing file may not suit the format to
+    # write. The data variables have their encoding replaced just below anyway.
+    drop_codec_encoding(dset)
 
-    dset.dep.encoding = {"filters": [fd], "_FillValue": DEPMAX, "dtype": kw["dtype"]}
     for varname, dvar in dset.data_vars.items():
         if varname == "dep":
-            continue
-        dvar.encoding = {"filters": [fa], "_FillValue": AMPMAX, "dtype": kw["dtype"]}
+            dvar.encoding = {
+                "filters": [fd], "_FillValue": DEPMAX, "dtype": kw["dtype"]
+            }
+        else:
+            dvar.encoding = {
+                "filters": [fa], "_FillValue": AMPMAX, "dtype": kw["dtype"]
+            }
 
     dset.to_zarr(filename, **kwargs)
 

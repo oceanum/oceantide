@@ -24,17 +24,17 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Scientific/Engineering :: Visualization",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 dependencies = [
     "click",
     "dask",
     "netcdf4",
     "numpy",
+    "pyyaml",
     "scipy",
     "xarray",
     "zarr",
@@ -52,7 +52,6 @@ extra = [
 docs = [
   "pydata-sphinx-theme",
   "sphinx",
-  "sphinxcontrib-programoutput",
 ]
 
 [project.urls]
@@ -64,7 +63,7 @@ docs = [
 oceantide = "oceantide.cli:main"
 
 [tool.setuptools.packages.find]
-exclude = ["docs", "tests"]
+exclude = ["docs*", "tests*"]
 
 [tool.setuptools.package-data]
 "oceantide.core" = ["*.yml"]

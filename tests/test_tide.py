@@ -113,3 +113,22 @@ def test_predict_stays_lazy(dset):
     out = dset.chunk({"lat": 10, "lon": 10}).tide.predict(times, components=["h"])
     assert isinstance(out.h.data, da.Array)
     assert out.h.chunks is not None
+
+
+def test_prediction_can_be_written_back_to_zarr(dset, tmpdir):
+    """Regression: coords carried the source file's codecs into the new store.
+
+    The constituents come from a zarr written with one format version and the
+    prediction inherited their codec encoding, so writing it out again failed
+    with 'Expected a BytesBytesCodec' once the versions differed.
+    """
+    times = pd.date_range("2026-01-01", periods=24, freq="h")
+    pred = dset.chunk({"lat": 10, "lon": 10}).tide.predict(times)
+
+    for variable in pred.variables.values():
+        assert not {"compressor", "compressors", "filters", "serializer", "codecs"} & set(
+            variable.encoding
+        )
+
+    pred.to_zarr(str(tmpdir / "pred.zarr"))
+    pred.to_netcdf(str(tmpdir / "pred.nc"))

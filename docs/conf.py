@@ -21,7 +21,6 @@
 import os
 import sys
 import oceantide
-import sphinx_rtd_theme
 
 
 sys.path.insert(0, os.path.abspath("../"))
@@ -42,16 +41,8 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.autosectionlabel",
     "sphinx.ext.githubpages",
-    "sphinx_gallery.gen_gallery",
-    "IPython.sphinxext.ipython_console_highlighting",
-    "IPython.sphinxext.ipython_directive",
-    "matplotlib.sphinxext.plot_directive",
+    "sphinx.ext.napoleon",
 ]
-
-sphinx_gallery_conf = {
-    "examples_dirs": "gallery",
-    "gallery_dirs": "auto_gallery",
-}
 
 autosummary_generate = True
 
@@ -69,7 +60,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "oceantide"
-copyright = "2020, Oceanum Developers"
+copyright = "2020-2026, Oceanum Developers"
 author = "Oceanum Developers"
 
 # The version info for the project you're documenting, acts as replacement
@@ -105,7 +96,7 @@ todo_include_todos = False
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "sphinx_rtd_theme"
+html_theme = "pydata_sphinx_theme"
 
 # Theme options are theme-specific and customize the look and feel of a
 # theme further.  For a list of options available for each theme, see the
