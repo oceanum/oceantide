@@ -63,7 +63,7 @@ docs = [
 oceantide = "oceantide.cli:main"
 
 [tool.setuptools.packages.find]
-exclude = ["docs", "tests"]
+exclude = ["docs*", "tests*"]
 
 [tool.setuptools.package-data]
 "oceantide.core" = ["*.yml"]
