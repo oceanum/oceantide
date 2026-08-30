@@ -52,7 +52,6 @@ extra = [
 docs = [
   "pydata-sphinx-theme",
   "sphinx",
-  "sphinxcontrib-programoutput",
 ]
 
 [project.urls]
