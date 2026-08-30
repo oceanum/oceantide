@@ -48,6 +48,39 @@ Internal Changes
   test writing the zarr format in both zarr formats 2 and 3.
 
 
+0.9.0 (unreleased)
+__________________
+
+Bug Fixes
+---------
+
+* Nodal corrections are evaluated at every prediction time instead of being
+  held at the value they take at the first time step. On a 3 m tide the frozen
+  correction cost 1.4 cm RMS over a year, 5.9 cm over five years and 9.5 cm
+  over a full 18.6 year nodal cycle. Predictions over more than a few days will
+  change, by design.
+* Fix the K1 nodal amplitude factor, which used 0.01554 where its own phase
+  correction and every published table use 0.1554. Worth up to 1.2% of K1
+  amplitude.
+* Fix the MSF nodal amplitude factor, which was inverted: compound constituents
+  raise the parent factors to the magnitude of their exponents, and only the
+  phase correction carries the sign. Worth up to 7.8% of MSF amplitude.
+* Derive compound constituent frequencies and equilibrium arguments from their
+  parents. M4 and MN4 were tabulated a part in 1e10 away from twice M2 and from
+  M2 + N2, which is 6 and 12 degrees of phase 34 years from the 1992 epoch, and
+  2MS6 carried M4's equilibrium argument verbatim.
+
+Internal Changes
+----------------
+
+* ``nodal()`` accepts a time of any shape; a scalar time behaves as before.
+* New ``nodal_corrections()`` returns the corrections as DataArrays, lazily
+  when the time axis is dask backed.
+* ``PERIODS`` is derived from ``OMEGA`` rather than tabulated alongside it.
+* Prediction is checked end to end against a committed pyTMD reference, and the
+  constituent tables against the Doodson expansion.
+
+
 0.7.0 (2024-01-31)
 __________________
 
