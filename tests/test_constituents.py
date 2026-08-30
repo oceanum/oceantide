@@ -61,19 +61,34 @@ def test_unknown_constituent_warns_and_is_dropped():
     assert v0u[1] == 0.0
 
 
-@pytest.mark.parametrize(
-    "con,parents",
-    [("M4", {"M2": 2}), ("MS4", {"M2": 1, "S2": 1}), ("2MS6", {"M2": 2, "S2": 1})],
-)
+@pytest.mark.parametrize("con,parents", sorted(SHALLOW.items()))
 def test_compound_nodal_factors_are_products_of_parents(con, parents):
+    """f multiplies the magnitudes; only u carries the sign of the exponent."""
     names = sorted({con} | set(parents))
     pu, pf, _ = nodal(TIME, names)
     f = dict(zip(names, pf))
     u = dict(zip(names, pu))
     assert f[con] == pytest.approx(
-        np.prod([f[p] ** k for p, k in parents.items()]), rel=1e-9
+        np.prod([f[p] ** abs(k) for p, k in parents.items()]), rel=1e-9
     )
     assert u[con] == pytest.approx(sum(u[p] * k for p, k in parents.items()), rel=1e-9)
+
+
+def test_msf_nodal_factor_is_not_inverted():
+    """Regression: MSF = S2 - M2 gave f = 1/f(M2) instead of f(M2).
+
+    f(S2) is unity, so MSF's factor is exactly M2's and its angle exactly the
+    negative of M2's. The signed form inverted the factor, worth up to 7.8%
+    across the nodal cycle.
+    """
+    worst = 0.0
+    for mjd in CYCLE:
+        pu, pf, _ = nodal(mjd, ["M2", "MSF"])
+        assert pf[1] == pytest.approx(pf[0], rel=1e-12)
+        assert pu[1] == pytest.approx(-pu[0], rel=1e-12, abs=1e-15)
+        worst = max(worst, abs(1.0 / pf[0] - pf[0]) / pf[0])
+    # The spread the inverted form used to introduce, for the record.
+    assert 100 * worst == pytest.approx(7.8, abs=0.2)
 
 
 def test_m2_group_shares_the_m2_nodal_factor():

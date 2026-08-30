@@ -101,8 +101,9 @@ V0U = {
 
 # Compound (shallow water) constituents, as the parent constituents they are
 # built from and the exponent of each. The nodal amplitude factor is the product
-# of the parents' factors raised to these powers and the phase correction is the
-# matching weighted sum, which is how Schureman and Foreman define them.
+# of the parents' factors raised to the *magnitude* of these exponents, and the
+# phase correction is the signed weighted sum, which is how Schureman and
+# Foreman define them (see the note in ``oceantide.core.utils.nodal``).
 #
 #   M4   = 2*M2       MN4  = M2 + N2     MS4  = M2 + S2
 #   2MS6 = 2*M2 + S2  MSF  = S2 - M2

@@ -106,12 +106,21 @@ def nodal(time: np.ndarray, con: np.ndarray):
     for name in ("2N2", "MU2", "NU2"):
         ndict[name] = ndict["M2"]
 
-    # Compound constituents are products of their parents.
+    # Compound constituents are products of their parents. A compound tide
+    # arises from a product of the parent potentials in the nonlinear terms, so
+    # its amplitude scales with the product of the parents' amplitudes however
+    # their arguments combine: f takes the magnitude of each exponent, and only
+    # the phase correction u carries the sign. Foreman (1977) and t_tide do the
+    # same -- t_vuf.m raises f to abs(coef) and sums u with coef.
+    #
+    # This matters only for MSF (S2 - M2), the one entry with a negative
+    # exponent, where the signed form gave 1/f(M2) instead of f(M2) -- a 7.8%
+    # error on MSF amplitude across the nodal cycle.
     for name, parents in SHALLOW.items():
         f = 1.0
         u = 0.0
         for parent, power in parents.items():
-            f = f * ndict[parent]["f"] ** power
+            f = f * ndict[parent]["f"] ** abs(power)
             u = u + ndict[parent]["u"] * power
         ndict[name] = {"f": f, "u": u}
 
