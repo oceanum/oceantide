@@ -108,3 +108,60 @@ def test_write_otis_binary(tmpdir):
     dset = read_otis_binary(FILES_DIR / "otis_binary/Model_rag")
     dset.tide.to_otis_binary(dirname=tmpdir, suffix="")
     dset2 = read_otis_binary(tmpdir / "model")
+
+
+def _one_point(h=1.0 + 0.5j, dep=50.0):
+    """Smallest dataset the oceantide writer accepts."""
+    return xr.Dataset(
+        {
+            "h": (("con", "lat", "lon"), np.array([[[h]]])),
+            "u": (("con", "lat", "lon"), np.array([[[0.1 + 0.0j]]])),
+            "v": (("con", "lat", "lon"), np.array([[[0.1 + 0.0j]]])),
+            "dep": (("lat", "lon"), np.array([[dep]])),
+        },
+        coords={"con": np.array(["M2"], dtype="U4"), "lat": [0.0], "lon": [0.0]},
+    )
+
+
+@pytest.mark.parametrize("ext", [".nc", ".zarr"])
+@pytest.mark.parametrize(
+    "kwargs,offender",
+    [
+        ({"h": 25.0 + 1.0j}, "h_real"),
+        ({"h": 1.0 - 40.0j}, "h_imag"),
+        ({"dep": 15000.0}, "dep"),
+        ({"dep": -1.0}, "dep"),
+    ],
+)
+def test_out_of_range_values_are_refused(tmpdir, ext, kwargs, offender):
+    """Regression: these used to wrap silently, 25 m coming back as -15 m."""
+    dset = _one_point(**kwargs)
+    with pytest.raises(ValueError, match="outside the range"):
+        dset.tide.to_oceantide(str(tmpdir / f"out{ext}"))
+    with pytest.raises(ValueError, match=offender):
+        dset.tide.to_oceantide(str(tmpdir / f"out{ext}"))
+
+
+@pytest.mark.parametrize("ext", [".nc", ".zarr"])
+def test_in_range_values_round_trip(tmpdir, ext):
+    """The check must not reject anything the packing can actually hold."""
+    dset = _one_point(h=-19.9 + 19.9j, dep=11999.0)
+    filename = str(tmpdir / f"edge{ext}")
+    dset.tide.to_oceantide(filename)
+    back = read_oceantide(filename)
+    assert back.h.values[0, 0, 0].real == pytest.approx(-19.9, abs=1e-3)
+    assert back.h.values[0, 0, 0].imag == pytest.approx(19.9, abs=1e-3)
+    assert float(back.dep.values[0, 0]) == pytest.approx(11999.0, abs=DEP_ATOL)
+
+
+@pytest.mark.parametrize("ext", [".nc", ".zarr"])
+def test_range_check_can_be_disabled(tmpdir, ext):
+    """The opt-out exists for known-safe data; it must not itself raise."""
+    _one_point().tide.to_oceantide(str(tmpdir / f"skip{ext}"), check_range=False)
+
+
+def test_all_missing_variable_is_not_flagged(tmpdir):
+    """An entirely masked variable has no values to pack."""
+    dset = _one_point()
+    dset["h"] = dset.h.where(False)
+    dset.tide.to_oceantide(str(tmpdir / "masked.nc"))
