@@ -16,20 +16,27 @@ def nodal(time: np.ndarray, con: np.ndarray):
 
     Parameters
     ----------
-    time (1darray)
+    time (float, ndarray)
         Time given as the number of days since 01 Jan 1992 + 48622, or equivalently
-        the number of days since 17 Nov 1858.
+        the number of days since 17 Nov 1858. Any shape, including a scalar.
     con (1darray)
         Constituents to compute.
 
     Returns
     -------
-    pu (1darray)
-        Nodal correction pu.
-    pf (1darray)
-        Nodal correction pf.
-    v0u (1darray)
-        Nodal correction v0u.
+    pu (ndarray)
+        Nodal angle correction in radians, shape ``np.shape(time) + (len(con),)``.
+    pf (ndarray)
+        Nodal amplitude factor, same shape as `pu`.
+    v0u (ndarray)
+        Equilibrium argument at the 1992 epoch in radians, same shape as `pu`.
+
+    Notes
+    -----
+    `pu` and `pf` vary over the 18.6 year nodal cycle and are evaluated at every
+    time given. `v0u` is a property of the constituent rather than of the time,
+    and is broadcast along the time axis only so that all three share a shape;
+    the advance of the argument with time is `omega * t`, applied by the caller.
 
     """
     rad = np.pi / 180.0
@@ -40,62 +47,50 @@ def nodal(time: np.ndarray, con: np.ndarray):
     cos2n = np.cos(2 * omega * rad)
     sin3n = np.sin(3 * omega * rad)
 
+    def polar(real, imag):
+        """Nodal factor and angle as the modulus and argument of one term.
+
+        The nodal correction of these constituents is a single complex
+        modulation term: f is its modulus and u its argument. Writing the two
+        out separately means spelling the coefficients twice, which is how they
+        drift apart -- K1's f carried 0.01554 where its own u used 0.1554, a
+        dropped digit worth 1.2% of K1 amplitude at the nodal extremes.
+
+        """
+        z = real + 1j * imag
+        return {"f": np.abs(z), "u": np.angle(z) / rad}
+
+    # Semidiurnal lunar group, Schureman via the OTIS `nodal.f` coefficients.
+    m2 = polar(
+        1.0 - 0.03731 * cosn + 0.00052 * cos2n,
+        -0.03731 * sinn + 0.00052 * sin2n,
+    )
+
     ndict = {
-        "M2": {
-            "f": np.sqrt(
-                (1.0 - 0.03731 * cosn + 0.00052 * cos2n) ** 2
-                + (0.03731 * sinn - 0.00052 * sin2n) ** 2
-            ),
-            "u": np.arctan(
-                (-0.03731 * sinn + 0.00052 * sin2n)
-                / (1.0 - 0.03731 * cosn + 0.00052 * cos2n)
-            )
-            / rad,
-        },
+        "M2": m2,
         "S2": {"f": 1.0, "u": 0.0},
-        "K1": {
-            "f": np.sqrt(
-                (1.0 + 0.1158 * cosn - 0.0029 * cos2n) ** 2
-                + (0.01554 * sinn - 0.0029 * sin2n) ** 2
-            ),
-            "u": np.arctan(
-                (-0.1554 * sinn + 0.0029 * sin2n)
-                / (1.0 + 0.1158 * cosn - 0.0029 * cos2n)
-            )
-            / rad,
-        },
+        "K1": polar(
+            1.0 + 0.1158 * cosn - 0.0029 * cos2n,
+            -0.1554 * sinn + 0.0029 * sin2n,
+        ),
+        # O1 and Q1 keep OTIS's hand-written angle series rather than the
+        # argument of their own f term; the two are not interchangeable, and
+        # Q1 genuinely uses 0.188 in f against 0.189 in u.
         "O1": {
-            "f": np.sqrt(
-                (1.0 + 0.189 * cosn - 0.0058 * cos2n) ** 2
-                + (0.189 * sinn - 0.0058 * sin2n) ** 2
+            "f": np.hypot(
+                1.0 + 0.189 * cosn - 0.0058 * cos2n,
+                0.189 * sinn - 0.0058 * sin2n,
             ),
             "u": 10.8 * sinn - 1.3 * sin2n + 0.2 * sin3n,
         },
-        "N2": {
-            "f": np.sqrt(
-                (1.0 - 0.03731 * cosn + 0.00052 * cos2n) ** 2
-                + (0.03731 * sinn - 0.00052 * sin2n) ** 2
-            ),
-            "u": np.arctan(
-                (-0.03731 * sinn + 0.00052 * sin2n)
-                / (1.0 - 0.03731 * cosn + 0.00052 * cos2n)
-            )
-            / rad,
-        },
+        "N2": m2,
         "P1": {"f": 1.0, "u": 0.0},
-        "K2": {
-            "f": np.sqrt(
-                (1.0 + 0.2852 * cosn + 0.0324 * cos2n) ** 2
-                + (0.3108 * sinn + 0.0324 * sin2n) ** 2
-            ),
-            "u": np.arctan(
-                -(0.3108 * sinn + 0.0324 * sin2n)
-                / (1.0 + 0.2852 * cosn + 0.0324 * cos2n)
-            )
-            / rad,
-        },
+        "K2": polar(
+            1.0 + 0.2852 * cosn + 0.0324 * cos2n,
+            -0.3108 * sinn - 0.0324 * sin2n,
+        ),
         "Q1": {
-            "f": np.sqrt((1.0 + 0.188 * cosn) ** 2 + (0.188 * sinn) ** 2),
+            "f": np.hypot(1.0 + 0.188 * cosn, 0.188 * sinn),
             "u": np.arctan(0.189 * sinn / (1.0 + 0.189 * cosn)) / rad,
         },
         # Long period. Mm and Mf carry the standard Schureman factors; Mf's
@@ -118,26 +113,35 @@ def nodal(time: np.ndarray, con: np.ndarray):
     for name in ("2N2", "MU2", "NU2"):
         ndict[name] = ndict["M2"]
 
-    # Compound constituents are products of their parents.
+    # Compound constituents are products of their parents. A compound tide
+    # arises from a product of the parent potentials in the nonlinear terms, so
+    # its amplitude scales with the product of the parents' amplitudes however
+    # their arguments combine: f takes the magnitude of each exponent, and only
+    # the phase correction u carries the sign. Foreman (1977) and t_tide do the
+    # same -- t_vuf.m raises f to abs(coef) and sums u with coef.
+    #
+    # This matters only for MSF (S2 - M2), the one entry with a negative
+    # exponent, where the signed form gave 1/f(M2) instead of f(M2) -- a 7.8%
+    # error on MSF amplitude across the nodal cycle.
     for name, parents in SHALLOW.items():
         f = 1.0
         u = 0.0
         for parent, power in parents.items():
-            f = f * ndict[parent]["f"] ** power
+            f = f * ndict[parent]["f"] ** abs(power)
             u = u + ndict[parent]["u"] * power
         ndict[name] = {"f": f, "u": u}
 
-    ncon = len(con)
-    pu = np.zeros(ncon)
-    pf = np.ones(ncon)
-    v0u = np.zeros(ncon)
+    shape = np.shape(time) + (len(con),)
+    pu = np.zeros(shape)
+    pf = np.ones(shape)
+    v0u = np.zeros(shape)
 
     for ii, vv in enumerate(con):
         if vv in ndict:
-            pu[ii] = ndict[vv]["u"] * rad
-            pf[ii] = ndict[vv]["f"]
+            pu[..., ii] = ndict[vv]["u"] * rad
+            pf[..., ii] = ndict[vv]["f"]
         if vv in V0U:
-            v0u[ii] = V0U[vv]
+            v0u[..., ii] = V0U[vv]
         else:
             # Falling through with v0u = 0 references the constituent to an
             # arbitrary phase, which produces a plausible looking but wrong
@@ -148,9 +152,51 @@ def nodal(time: np.ndarray, con: np.ndarray):
                 f"Add it to oceantide.constituents.V0U to support it.",
                 stacklevel=2,
             )
-            pf[ii] = 0.0
+            pf[..., ii] = 0.0
 
     return pu, pf, v0u
+
+
+def nodal_corrections(tsec: xr.DataArray, con: list):
+    """Nodal corrections along a time axis, as DataArrays.
+
+    Parameters
+    ----------
+    tsec (DataArray)
+        Seconds since 1992-01-01T00:00 UTC, the epoch `v0u` is referenced to.
+        May be dask backed, in which case the corrections stay lazy and are
+        evaluated chunk by chunk.
+    con (list)
+        Constituents to compute.
+
+    Returns
+    -------
+    pu, pf, v0u (DataArray)
+        Nodal corrections with the dimensions of `tsec` plus a `con` dimension.
+
+    Notes
+    -----
+    `pu` and `pf` are evaluated at every time rather than held at the value
+    they take at the start of the series. Over a year the difference is around
+    1 cm RMS on a 3 m tide, over five years 6 cm, and over a full 18.6 year
+    nodal cycle 10 cm RMS with excursions past 30 cm.
+
+    """
+
+    def stack(seconds):
+        pu, pf, v0u = nodal(seconds / 86400.0 + 48622.0, con)
+        return np.stack([pu, pf, v0u], axis=-1)
+
+    darr = xr.apply_ufunc(
+        stack,
+        tsec,
+        output_core_dims=[["con", "_nodal"]],
+        dask="parallelized",
+        output_dtypes=[float],
+        dask_gufunc_kwargs={"output_sizes": {"con": len(con), "_nodal": 3}},
+    )
+    darr = darr.assign_coords({"con": np.array(con, dtype="U4")})
+    return tuple(darr.isel(_nodal=index, drop=True) for index in range(3))
 
 
 def astrol(time: np.ndarray):
