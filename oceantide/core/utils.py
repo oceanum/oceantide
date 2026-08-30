@@ -10,6 +10,33 @@ from oceantide.constituents import SHALLOW, V0U
 
 HERE = Path(__file__).parent
 
+# Encoding entries naming codecs. They belong to the file a dataset was read
+# from and to that file format's version, so they must not follow the data into
+# a new file: a zarr 2 Blosc instance is rejected outright by zarr 3, and a
+# scale and offset meant for packed constituents has no business re-packing
+# whatever is derived from them.
+CODEC_ENCODINGS = ("compressor", "compressors", "filters", "serializer", "codecs")
+
+
+def drop_codec_encoding(dset):
+    """Drop codec encoding inherited from the file a dataset was read from.
+
+    Parameters
+    ----------
+    dset (Dataset)
+        Dataset to strip, modified in place.
+
+    Returns
+    -------
+    dset (Dataset)
+        The same dataset, for chaining.
+
+    """
+    for variable in dset.variables.values():
+        for key in CODEC_ENCODINGS:
+            variable.encoding.pop(key, None)
+    return dset
+
 
 def nodal(time: np.ndarray, con: np.ndarray):
     """Nodal correction.

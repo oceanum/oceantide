@@ -4,13 +4,14 @@ import numpy as np
 import xarray as xr
 import zarr
 
-from oceantide.core.utils import set_attributes, compute_scale_and_offset
+from oceantide.core.utils import (
+    compute_scale_and_offset,
+    drop_codec_encoding,
+    set_attributes,
+)
 
 
 ZARR_VERSION = int(zarr.__version__.split(".")[0])
-
-# Encoding entries defining codecs, they are specific to the zarr format version
-CODEC_ENCODINGS = ("compressor", "compressors", "filters", "serializer", "codecs")
 
 
 AMPMIN = -20.0
@@ -218,10 +219,9 @@ def _write_zarr(dset: xr.Dataset, filename: str, **kwargs):
     # Work on a copy so the encoding of the input dataset is left untouched
     dset = dset.copy()
 
-    # Codecs defined when reading an existing file may not suit the format to write
-    for coord in dset.coords.values():
-        for key in CODEC_ENCODINGS:
-            coord.encoding.pop(key, None)
+    # Codecs defined when reading an existing file may not suit the format to
+    # write. The data variables have their encoding replaced just below anyway.
+    drop_codec_encoding(dset)
 
     for varname, dvar in dset.data_vars.items():
         if varname == "dep":
