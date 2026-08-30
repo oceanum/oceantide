@@ -16,20 +16,27 @@ def nodal(time: np.ndarray, con: np.ndarray):
 
     Parameters
     ----------
-    time (1darray)
+    time (float, ndarray)
         Time given as the number of days since 01 Jan 1992 + 48622, or equivalently
-        the number of days since 17 Nov 1858.
+        the number of days since 17 Nov 1858. Any shape, including a scalar.
     con (1darray)
         Constituents to compute.
 
     Returns
     -------
-    pu (1darray)
-        Nodal correction pu.
-    pf (1darray)
-        Nodal correction pf.
-    v0u (1darray)
-        Nodal correction v0u.
+    pu (ndarray)
+        Nodal angle correction in radians, shape ``np.shape(time) + (len(con),)``.
+    pf (ndarray)
+        Nodal amplitude factor, same shape as `pu`.
+    v0u (ndarray)
+        Equilibrium argument at the 1992 epoch in radians, same shape as `pu`.
+
+    Notes
+    -----
+    `pu` and `pf` vary over the 18.6 year nodal cycle and are evaluated at every
+    time given. `v0u` is a property of the constituent rather than of the time,
+    and is broadcast along the time axis only so that all three share a shape;
+    the advance of the argument with time is `omega * t`, applied by the caller.
 
     """
     rad = np.pi / 180.0
@@ -124,17 +131,17 @@ def nodal(time: np.ndarray, con: np.ndarray):
             u = u + ndict[parent]["u"] * power
         ndict[name] = {"f": f, "u": u}
 
-    ncon = len(con)
-    pu = np.zeros(ncon)
-    pf = np.ones(ncon)
-    v0u = np.zeros(ncon)
+    shape = np.shape(time) + (len(con),)
+    pu = np.zeros(shape)
+    pf = np.ones(shape)
+    v0u = np.zeros(shape)
 
     for ii, vv in enumerate(con):
         if vv in ndict:
-            pu[ii] = ndict[vv]["u"] * rad
-            pf[ii] = ndict[vv]["f"]
+            pu[..., ii] = ndict[vv]["u"] * rad
+            pf[..., ii] = ndict[vv]["f"]
         if vv in V0U:
-            v0u[ii] = V0U[vv]
+            v0u[..., ii] = V0U[vv]
         else:
             # Falling through with v0u = 0 references the constituent to an
             # arbitrary phase, which produces a plausible looking but wrong
@@ -145,9 +152,51 @@ def nodal(time: np.ndarray, con: np.ndarray):
                 f"Add it to oceantide.constituents.V0U to support it.",
                 stacklevel=2,
             )
-            pf[ii] = 0.0
+            pf[..., ii] = 0.0
 
     return pu, pf, v0u
+
+
+def nodal_corrections(tsec: xr.DataArray, con: list):
+    """Nodal corrections along a time axis, as DataArrays.
+
+    Parameters
+    ----------
+    tsec (DataArray)
+        Seconds since 1992-01-01T00:00 UTC, the epoch `v0u` is referenced to.
+        May be dask backed, in which case the corrections stay lazy and are
+        evaluated chunk by chunk.
+    con (list)
+        Constituents to compute.
+
+    Returns
+    -------
+    pu, pf, v0u (DataArray)
+        Nodal corrections with the dimensions of `tsec` plus a `con` dimension.
+
+    Notes
+    -----
+    `pu` and `pf` are evaluated at every time rather than held at the value
+    they take at the start of the series. Over a year the difference is around
+    1 cm RMS on a 3 m tide, over five years 6 cm, and over a full 18.6 year
+    nodal cycle 10 cm RMS with excursions past 30 cm.
+
+    """
+
+    def stack(seconds):
+        pu, pf, v0u = nodal(seconds / 86400.0 + 48622.0, con)
+        return np.stack([pu, pf, v0u], axis=-1)
+
+    darr = xr.apply_ufunc(
+        stack,
+        tsec,
+        output_core_dims=[["con", "_nodal"]],
+        dask="parallelized",
+        output_dtypes=[float],
+        dask_gufunc_kwargs={"output_sizes": {"con": len(con), "_nodal": 3}},
+    )
+    darr = darr.assign_coords({"con": np.array(con, dtype="U4")})
+    return tuple(darr.isel(_nodal=index, drop=True) for index in range(3))
 
 
 def astrol(time: np.ndarray):

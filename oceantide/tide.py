@@ -12,7 +12,7 @@ import dask.array as da
 import pandas as pd
 import xarray as xr
 
-from oceantide.core.utils import nodal, set_attributes
+from oceantide.core.utils import nodal_corrections, set_attributes
 from oceantide.constituents import OMEGA
 
 
@@ -127,6 +127,12 @@ class Tide(metaclass=Plugin):
         Returns:
             ds (Dataset): Predicted tide timeseries components :math:`\\eta(time,lat,lon)`.
 
+        Note:
+            The nodal corrections f and u are evaluated at every time in
+            `times`, not held at the value they take at the start of the
+            series. The result stays lazy if the constituents or `times` are
+            dask backed.
+
         """
         if not components or {"h", "u", "v"} - set(components) == {"h", "u", "v"}:
             raise ValueError("Choose at least one tide component h, u or v to predict")
@@ -144,6 +150,12 @@ class Tide(metaclass=Plugin):
         elif isinstance(times, xr.DataArray):
             _epoch = np.datetime64("1970-01-01")
             tsec = (times - _epoch) / np.timedelta64(1, "s") - 694224000
+            # The nodal corrections are now evaluated at every time rather than
+            # once, so a long unchunked time axis would materialise a
+            # (time, con) array per correction. Bound it the same way the list
+            # branch does, leaving anything already chunked or small alone.
+            if tsec.chunks is None and tsec.size > time_chunk:
+                tsec = tsec.chunk({tsec.dims[0]: time_chunk})
         else:
             raise TypeError(
                 "times argument must be a list of datetimes, pandas.DatetimeIndex, "
@@ -161,12 +173,9 @@ class Tide(metaclass=Plugin):
         else:
             ds = self._obj
 
-        pu, pf, v0u = nodal(tsec[0] / 86400 + 48622.0, cons)
+        pu, pf, v0u = nodal_corrections(tsec, cons)
 
         # Variables for calculations
-        pf = xr.DataArray(pf, coords={"con": cons}, dims=("con",))
-        pu = xr.DataArray(pu, coords={"con": cons}, dims=("con",))
-        v0u = xr.DataArray(v0u, coords={"con": cons}, dims=("con",))
         omega = xr.DataArray(
             data=[OMEGA[c] for c in cons], coords={"con": cons}, dims=("con",)
         )
