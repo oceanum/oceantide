@@ -117,7 +117,7 @@ def to_oceantide(
         file format cannot be determined or is unsupported.
 
     """
-    dset = self._obj[["dep"]]
+    dset = self._obj[["dep"]] if "dep" in self._obj else xr.Dataset()
     for v in ["h", "u", "v"]:
         if v in self._obj:
             dset[f"{v}_real"] = self._obj[v].real
@@ -223,11 +223,15 @@ def _write_zarr(dset: xr.Dataset, filename: str, **kwargs):
         for key in CODEC_ENCODINGS:
             coord.encoding.pop(key, None)
 
-    dset.dep.encoding = {"filters": [fd], "_FillValue": DEPMAX, "dtype": kw["dtype"]}
     for varname, dvar in dset.data_vars.items():
         if varname == "dep":
-            continue
-        dvar.encoding = {"filters": [fa], "_FillValue": AMPMAX, "dtype": kw["dtype"]}
+            dvar.encoding = {
+                "filters": [fd], "_FillValue": DEPMAX, "dtype": kw["dtype"]
+            }
+        else:
+            dvar.encoding = {
+                "filters": [fa], "_FillValue": AMPMAX, "dtype": kw["dtype"]
+            }
 
     dset.to_zarr(filename, **kwargs)
 

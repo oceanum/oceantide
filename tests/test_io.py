@@ -165,3 +165,22 @@ def test_all_missing_variable_is_not_flagged(tmpdir):
     dset = _one_point()
     dset["h"] = dset.h.where(False)
     dset.tide.to_oceantide(str(tmpdir / "masked.nc"))
+
+
+@pytest.mark.parametrize("ext", [".nc", ".zarr"])
+@pytest.mark.parametrize("keep", [["h"], ["u", "v"], ["h", "dep"], ["h", "u", "v"]])
+def test_partial_variables_round_trip(tmpdir, ext, keep):
+    """The accessor supports subsets of h, u, v, so the writer must too.
+
+    Regression: to_oceantide indexed self._obj[["dep"]] unconditionally and
+    raised KeyError on a dataset without it.
+    """
+    dset = _one_point()[keep]
+    filename = str(tmpdir / f"partial{ext}")
+    dset.tide.to_oceantide(filename)
+    back = read_oceantide(filename)
+
+    assert set(back.data_vars) == set(keep)
+    for varname in keep:
+        atol = DEP_ATOL if varname == "dep" else AMP_ATOL
+        assert np.allclose(back[varname].values, dset[varname].values, atol=atol)
