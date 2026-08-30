@@ -15,29 +15,82 @@ def test_tables_cover_the_same_constituents():
     assert set(OMEGA) == set(V0U) == set(PERIODS)
 
 
-@pytest.mark.parametrize("con", sorted(c for c in OMEGA if c != "Z0"))
-def test_omega_agrees_with_period(con):
-    """Angular speed and period must describe the same constituent."""
-    assert OMEGA[con] == pytest.approx(2 * np.pi / (PERIODS[con] * 3600.0), rel=1e-5)
+# Doodson numbers (tau, s, h, p, ps) of each constituent, and the mean motions
+# of the astronomical arguments in degrees per day from the Explanatory
+# Supplement. Together these fix every angular speed from first principles,
+# independently of the OTIS table OMEGA is transcribed from. N' is omitted: it
+# does not enter the frequencies, only the nodal corrections f and u.
+DOODSON = {
+    "SA": (0, 0, 1, 0, -1),
+    "SSA": (0, 0, 2, 0, 0),
+    "MM": (0, 1, 0, -1, 0),
+    "MSF": (0, 2, -2, 0, 0),
+    "MF": (0, 2, 0, 0, 0),
+    "Q1": (1, -2, 0, 1, 0),
+    "O1": (1, -1, 0, 0, 0),
+    "P1": (1, 1, -2, 0, 0),
+    "S1": (1, 1, -1, 0, 1),
+    "K1": (1, 1, 0, 0, 0),
+    "2N2": (2, -2, 0, 2, 0),
+    "MU2": (2, -2, 2, 0, 0),
+    "N2": (2, -1, 0, 1, 0),
+    "NU2": (2, -1, 2, -1, 0),
+    "M2": (2, 0, 0, 0, 0),
+    "T2": (2, 2, -3, 0, 1),
+    "S2": (2, 2, -2, 0, 0),
+    "K2": (2, 2, 0, 0, 0),
+    "MN4": (4, -1, 0, 1, 0),
+    "M4": (4, 0, 0, 0, 0),
+    "MS4": (4, 2, -2, 0, 0),
+    "2MS6": (6, 2, -2, 0, 0),
+}
+
+# Mean motions in degrees per day: moon, sun, lunar perigee, solar perigee.
+RATE_S, RATE_H, RATE_P, RATE_PS = 13.17639648, 0.98564736, 0.11140353, 0.0000470684
+RATE_TAU = 360.0 + RATE_H - RATE_S  # one mean lunar day
+
+
+@pytest.mark.parametrize("con", sorted(DOODSON))
+def test_omega_matches_the_doodson_expansion(con):
+    """Angular speeds must be the combination their Doodson numbers declare.
+
+    PERIODS is derived from OMEGA and the compound speeds are derived from
+    their parents, so neither can be checked against the other. This checks the
+    whole table against the astronomy instead.
+    """
+    tau, s, h, p, ps = DOODSON[con]
+    degrees_per_day = (
+        tau * RATE_TAU + s * RATE_S + h * RATE_H + p * RATE_P + ps * RATE_PS
+    )
+    expected = np.deg2rad(degrees_per_day) / 86400.0
+    assert OMEGA[con] == pytest.approx(expected, rel=5e-6)
+    assert PERIODS[con] == pytest.approx(360.0 / degrees_per_day * 24.0, rel=5e-6)
 
 
 def test_ms4_is_the_sum_of_m2_and_s2():
     """Regression: MS4 was 2.811149e-04, which is not M2 + S2."""
-    assert OMEGA["MS4"] == pytest.approx(OMEGA["M2"] + OMEGA["S2"], rel=1e-5)
+    assert OMEGA["MS4"] == OMEGA["M2"] + OMEGA["S2"]
 
 
 @pytest.mark.parametrize("con,parents", sorted(SHALLOW.items()))
 def test_compound_speeds_are_the_sum_of_their_parents(con, parents):
-    expected = sum(OMEGA[p] * k for p, k in parents.items())
-    assert OMEGA[con] == pytest.approx(expected, rel=1e-5)
+    """Exactly, not approximately: these are derived, not transcribed.
+
+    M4 was tabulated as 2.810379e-04 against 2*OMEGA["M2"] of 2.810378e-04.
+    That 1e-10 rad/s is 6 degrees of M4 phase 34 years from the 1992 epoch.
+    """
+    assert OMEGA[con] == sum(OMEGA[p] * k for p, k in parents.items())
 
 
 @pytest.mark.parametrize("con,parents", sorted(SHALLOW.items()))
 def test_compound_equilibrium_arguments_follow_their_parents(con, parents):
+    """Exactly, as for the speeds: derived from the parents, not transcribed.
+
+    2MS6 had been given M4's argument verbatim, which happens to be within
+    0.03 degrees of the right answer and so read as plausible.
+    """
     expected = sum(V0U[p] * k for p, k in parents.items()) % (2 * np.pi)
-    got = V0U[con] % (2 * np.pi)
-    diff = abs((got - expected + np.pi) % (2 * np.pi) - np.pi)
-    assert diff < 1e-3
+    assert V0U[con] == expected
 
 
 def test_every_constituent_has_a_nodal_entry():
