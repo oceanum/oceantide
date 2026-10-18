@@ -48,7 +48,7 @@ def to_otis_netcdf(
     lat_z, lon_z = np.meshgrid(ds.ny, ds.nx)
     dx = float(ds.nx[1] - ds.nx[0])
     dy = float(ds.ny[1] - ds.ny[0])
-    ds = ds.drop(["nc", "nx", "ny"])
+    ds = ds.drop_vars(["nc", "nx", "ny"])
     cons = np.array([f"{c:4s}".lower() for c in self._obj.con.values], dtype="S4")
 
     mz = xr.where(ds.dep > 0, 1.0, 0.0)
@@ -68,9 +68,9 @@ def to_otis_netcdf(
         filenames["hfile"] = Path(dirname) / fname
 
         ha = self.amplitude("h").transpose("con", "lon", "lat", ...)
-        ha = ha.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop(["nc", "nx", "ny"])
+        ha = ha.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop_vars(["nc", "nx", "ny"])
         hp = self.phase("h").transpose("con", "lon", "lat", ...)
-        hp = hp.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop(["nc", "nx", "ny"])
+        hp = hp.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop_vars(["nc", "nx", "ny"])
         dsout = xr.Dataset()
         dsout["con"] = xr.DataArray(cons, dims=("nc"))
         dsout["lon_z"] = xr.DataArray(lon_z, dims=("nx", "ny"))
@@ -91,13 +91,13 @@ def to_otis_netcdf(
         filenames["ufile"] = Path(dirname) / fname
 
         ua = self.amplitude("u").transpose("con", "lon", "lat", ...)
-        ua = ua.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop(["nc", "nx", "ny"])
+        ua = ua.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop_vars(["nc", "nx", "ny"])
         up = self.phase("u").transpose("con", "lon", "lat", ...)
-        up = up.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop(["nc", "nx", "ny"])
+        up = up.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop_vars(["nc", "nx", "ny"])
         va = self.amplitude("v").transpose("con", "lon", "lat", ...)
-        va = va.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop(["nc", "nx", "ny"])
+        va = va.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop_vars(["nc", "nx", "ny"])
         vp = self.phase("v").transpose("con", "lon", "lat", ...)
-        vp = vp.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop(["nc", "nx", "ny"])
+        vp = vp.rename({"con": "nc", "lon": "nx", "lat": "ny"}).drop_vars(["nc", "nx", "ny"])
         dsout = xr.Dataset()
         dsout["con"] = dsout["con"] = xr.DataArray(cons, dims=("nc"))
         dsout["lon_u"] = xr.DataArray(lon_u, dims=("nx", "ny"))

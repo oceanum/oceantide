@@ -314,7 +314,8 @@ def set_attributes(dset: xr.Dataset, dataset_type: str):
         Dataset type, e.g., 'otis'.
 
     """
-    all_attrs = yaml.load(open(HERE / "attributes.yml"), Loader=yaml.Loader)
+    with open(HERE / "attributes.yml") as stream:
+        all_attrs = yaml.load(stream, Loader=yaml.Loader)
     if isinstance(dset, xr.Dataset):
         for varname, darr in dset.variables.items():
             darr.attrs.update(all_attrs.get(dataset_type).get(varname, {}))
