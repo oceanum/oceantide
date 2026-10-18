@@ -43,6 +43,8 @@ Bug Fixes
   versions.
 * The release workflow installed the published package over the working tree,
   so the tests gating a release ran against the previous release.
+* The release workflow ran on Python 3.10, which ``requires-python`` no longer
+  allows; it now uses 3.12.
 
 Internal Changes
 ----------------
