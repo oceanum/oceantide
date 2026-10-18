@@ -660,6 +660,20 @@ class OtisFormatter:
             self.ds[f"{v}"] = real + imag
             self.ds = self.ds.drop_vars([f"{v}Re", f"{v}Im"])
 
+    @staticmethod
+    def _velocity(transport, depth):
+        """Depth averaged velocity from transport, zero where the node is dry.
+
+        Dividing straight through gave inf wherever the node depth was zero but
+        the transport was not, which happens at U and V nodes bordering land.
+        Those infinities survived the interpolation onto Z-nodes and the land
+        mask, which keys off the Z-node depth rather than the U or V node's, and
+        ended up in the written file. No flow passes through a dry node, so the
+        velocity there is zero.
+
+        """
+        return xr.where(depth > 0, transport / depth.where(depth > 0), 0.0)
+
     def _to_single_grid(self):
         """Convert Arakawa into single grid at Z-nodes."""
         self.ds = xr.Dataset()
@@ -668,10 +682,18 @@ class OtisFormatter:
         self.ds["dep"] = self.dsg.hz
         self.ds["hRe"] = self.dsh.hRe
         self.ds["hIm"] = self.dsh.hIm
-        self.ds["uRe"] = z_from_u(self.dsu.URe / self.dsg.hu, self.dsg.mu, self.dsg.mz)
-        self.ds["uIm"] = z_from_u(self.dsu.UIm / self.dsg.hu, self.dsg.mu, self.dsg.mz)
-        self.ds["vRe"] = z_from_v(self.dsu.VRe / self.dsg.hv, self.dsg.mv, self.dsg.mz)
-        self.ds["vIm"] = z_from_v(self.dsu.VIm / self.dsg.hv, self.dsg.mv, self.dsg.mz)
+        hu, hv = self.dsg.hu, self.dsg.hv
+        for name, transport, depth in [
+            ("uRe", self.dsu.URe, hu),
+            ("uIm", self.dsu.UIm, hu),
+            ("vRe", self.dsu.VRe, hv),
+            ("vIm", self.dsu.VIm, hv),
+        ]:
+            velocity = self._velocity(transport, depth)
+            if name.startswith("u"):
+                self.ds[name] = z_from_u(velocity, self.dsg.mu, self.dsg.mz)
+            else:
+                self.ds[name] = z_from_v(velocity, self.dsg.mv, self.dsg.mz)
 
         # Coordinates
         self.ds = self.ds.rename({"nc": "con", "nx": "lon", "ny": "lat"})
